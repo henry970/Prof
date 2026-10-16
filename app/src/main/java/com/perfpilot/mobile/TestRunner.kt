@@ -121,6 +121,10 @@ class TestRunner(
                 progress("Run $i of ${cfg.iterations}: launching")
                 iterations.put(runOnce(i, component, clockTicks))
             }
+        } catch (e: CancelledException) {
+            // Stopped early: keep a report of the runs that finished, if there are any.
+            if (iterations.length() == 0) throw e
+            progress("Stopped after ${iterations.length()} of ${cfg.iterations} runs. Saving those.")
         } finally {
             Shell.tryExec("am force-stop $pkg", 10_000)
         }
@@ -132,7 +136,7 @@ class TestRunner(
             put("app", app)
             put("device", device)
             put("config", JSONObject().apply {
-                put("iterations", cfg.iterations)
+                put("iterations", iterations.length())
                 put("warmup", cfg.warmup)
                 put(
                     "journey",
