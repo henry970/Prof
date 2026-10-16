@@ -1,6 +1,14 @@
 package com.perfpilot.mobile
 
+import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -50,11 +58,18 @@ class CancelledException : Exception("Test stopped")
  * Produces the same raw result shape as the desktop CLI; scoring and the report are done by report.html.
  */
 class TestRunner(
+    private val context: Context,
     private val cfg: TestConfig,
     private val progress: (String) -> Unit,
 ) {
     @Volatile
     private var cancelled = false
+
+    /** Linux uid of the app under test, used to find its network traffic. */
+    private var uid = -1
+
+    /** Servers the app connected to, with the runs they were seen in. */
+    private val servers = LinkedHashMap<NetProbe.Server, MutableSet<Int>>()
 
     fun cancel() {
         cancelled = true
@@ -106,6 +121,12 @@ class TestRunner(
             put("versionCode", Parsers.versionCode(dump) ?: JSONObject.NULL)
             put("component", component)
         }
+        uid = try {
+            context.packageManager.getApplicationInfo(pkg, 0).uid
+        } catch (_: Exception) {
+            Regex("""userId=(\d+)""").find(dump)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+        }
+        NetProbe.grantUsageAccess(context)
 
         for (w in 1..cfg.warmup) {
             checkCancelled()
@@ -146,6 +167,48 @@ class TestRunner(
                 put("intervalS", cfg.intervalSeconds)
             })
             put("iterations", iterations)
+            put("network", networkSummary())
+        }
+    }
+
+    /** Servers seen across runs, with a name lookup and a connect-time check from this phone. */
+    private fun networkSummary(): JSONObject {
+        if (servers.isNotEmpty()) progress("Checking the servers the app used…")
+        val list = JSONArray()
+        servers.entries
+            .sortedByDescending { it.value.size }
+            .take(12)
+            .forEach { (server, runs) ->
+                list.put(
+                    JSONObject()
+                        .put("ip", server.ip)
+                        .put("port", server.port)
+                        .put("host", NetProbe.hostName(server.ip) ?: JSONObject.NULL)
+                        .put("runs", runs.size)
+                        .put("connectMs", NetProbe.connectMs(server.ip, server.port) ?: JSONObject.NULL)
+                )
+            }
+        return JSONObject()
+            .put("servers", list)
+            .put("serversTotal", servers.size)
+            .put("apiTag", NetProbe.API_TAG)
+    }
+
+    /** Toast + vibration so manual runs are easy to follow from inside the tested app. */
+    private fun cue(message: String, pulses: Int) {
+        val ctx = context.applicationContext
+        Handler(Looper.getMainLooper()).post { Toast.makeText(ctx, message, Toast.LENGTH_SHORT).show() }
+        try {
+            val vibrator: Vibrator = if (Build.VERSION.SDK_INT >= 31) {
+                ctx.getSystemService(VibratorManager::class.java)!!.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                ctx.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+            // off/on pairs: one or more 150 ms pulses
+            val timings = LongArray(pulses * 2) { i -> if (i % 2 == 1) 150L else if (i == 0) 0L else 120L }
+            vibrator.vibrate(VibrationEffect.createWaveform(timings, -1))
+        } catch (_: Throwable) {
         }
     }
 
@@ -153,6 +216,7 @@ class TestRunner(
         val pkg = cfg.packageName
         val result = JSONObject().put("index", index)
         val started = System.currentTimeMillis()
+        val bytesBefore = if (uid >= 0) NetProbe.uidBytes(context, uid) else null
         try {
             val launch = Shell.exec("am start -S -W -n $component", 90_000)
             val cold = Parsers.amStart(launch) ?: throw IllegalStateException("Could not read the launch time")
@@ -171,13 +235,20 @@ class TestRunner(
                         10 * 60_000L
                     )
                 } else {
+                    cue("Run $index of ${cfg.iterations}: use the app now (${cfg.manualSeconds} s)", 1)
                     for (s in cfg.manualSeconds downTo 1) {
                         if (s == cfg.manualSeconds || s % 5 == 0 || s <= 3) progress("Run $index: use the app — $s s left")
                         sleepMs(1000)
                     }
+                    cue(
+                        if (index < cfg.iterations) "Run $index done. The app will restart for run ${index + 1}."
+                        else "Last run done. Building the report…",
+                        2
+                    )
                 }
             } finally {
                 result.put("samples", sampler.stop())
+                for (server in sampler.seen) servers.getOrPut(server) { HashSet() }.add(index)
             }
             checkCancelled()
 
@@ -185,6 +256,21 @@ class TestRunner(
             result.put("frames", frames)
             result.put("journey", cfg.mode)
             progress("Run $index: ${frames.optInt("totalFrames")} frames, ${frames.opt("jankPct")}% janky")
+
+            val bytesAfter = if (uid >= 0) NetProbe.uidBytes(context, uid) else null
+            if (bytesBefore != null && bytesAfter != null) {
+                result.put(
+                    "network",
+                    JSONObject()
+                        .put("rxBytes", (bytesAfter[0] - bytesBefore[0]).coerceAtLeast(0))
+                        .put("txBytes", (bytesAfter[1] - bytesBefore[1]).coerceAtLeast(0))
+                        .put("servers", sampler.seen.size)
+                )
+            }
+            result.put("api", NetProbe.apiCalls(started))
+            val crashes = NetProbe.crashes(pkg, started)
+            result.put("crashes", crashes)
+            if (crashes.length() > 0) progress("Run $index: the app crashed or froze (${crashes.length()} event${if (crashes.length() == 1) "" else "s"})")
         } catch (e: CancelledException) {
             throw e
         } catch (e: Exception) {
@@ -198,6 +284,7 @@ class TestRunner(
     /** Samples CPU (100 = one core) and memory (PSS MB) on its own thread. */
     private inner class Sampler(private val pkg: String, private val intervalMs: Long, private val clockTicks: Int) {
         private val samples = JSONArray()
+        val seen: MutableSet<NetProbe.Server> = java.util.Collections.synchronizedSet(HashSet())
         @Volatile
         private var running = true
         private var thread: Thread? = null
@@ -231,6 +318,7 @@ class TestRunner(
                                 .put("memMB", mem ?: JSONObject.NULL)
                             synchronized(samples) { samples.put(sample) }
                         }
+                        if (uid >= 0) seen.addAll(NetProbe.connections(uid))
                     } catch (_: Throwable) {
                     }
                     val wait = intervalMs - (System.currentTimeMillis() - begin)

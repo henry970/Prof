@@ -56,7 +56,7 @@ class TestService : Service() {
                 if (!Shell.connect()) {
                     throw IllegalStateException("Couldn't start the Shizuku shell. Open Shizuku, check it's running, then try again.")
                 }
-                val r = TestRunner(cfg) { msg ->
+                val r = TestRunner(this, cfg) { msg ->
                     TestState.post(msg)
                     notify(buildNotification(msg, running = true))
                 }

@@ -60,8 +60,31 @@ Past reports are listed on the main screen. Tap one to open it, or long-press it
 | Janky frames, frame times p50–p99 | `dumpsys gfxinfo` for the app |
 | CPU (100% = one core) | `/proc/<pid>/stat`, sampled every 2 s |
 | Memory (PSS) | `dumpsys meminfo`, sampled every 2 s |
+| Data used | Android's per-app network stats, before and after each run |
+| Servers contacted | the app's open connections in `/proc/net/tcp`, sampled every 2 s, plus a connect-time check from the phone |
+| Crashes and freezes (ANR) | `am_crash` / `am_anr` events in the system log |
+| API response times | lines the app logs under the `PerfPilotApi` tag (see below) |
 
 Scoring targets: cold start ≤ 1000 ms, janky frames ≤ 5%, CPU ≤ 25%, memory ≤ 200 MB. The score and report code is the same as the desktop CLI's: `app/src/main/assets/perf.js` is generated from it by `perfpilot-mobile/tools/build-android-assets.js`.
+
+## API response times (for apps you build)
+
+HTTPS is encrypted, so PerfPilot can't read another app's requests. If you build the app, log one line per API call under the tag `PerfPilotApi` in the form `METHOD path status timeMs`, and the report will show each endpoint's call count, median, p90 and errors. With OkHttp, for example:
+
+```kotlin
+class PerfPilotInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val req = chain.request()
+        val t0 = System.nanoTime()
+        val res = chain.proceed(req)
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        Log.i("PerfPilotApi", "${req.method} ${req.url.encodedPath} ${res.code} ${ms}ms")
+        return res
+    }
+}
+```
+
+Add it only to debug or test builds.
 
 ## Tips
 
