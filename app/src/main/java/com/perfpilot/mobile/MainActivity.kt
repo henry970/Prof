@@ -269,7 +269,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderState() {
         val running = TestState.running
-        btnStart.isEnabled = !running && selected != null && Shell.status() == Shell.Status.READY
+        // Left enabled so a tap explains what's missing (no app chosen, no Shizuku access) instead of doing nothing.
         btnStart.visibility = if (running) View.GONE else View.VISIBLE
         btnStop.visibility = if (running) View.VISIBLE else View.GONE
         val log = TestState.log()
