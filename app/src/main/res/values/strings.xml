@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PerfPilot Mobile</string>
+    <string name="tagline">Performance testing for any app on this phone</string>
+    <string name="report_title">Report</string>
+    <string name="channel_name">Performance tests</string>
+
+    <string name="section_access">1. Access</string>
+    <string name="section_app">2. App to test</string>
+    <string name="section_settings">3. Test settings</string>
+    <string name="section_progress">Progress</string>
+    <string name="section_history">Past reports</string>
+
+    <string name="access_ready">Ready. PerfPilot can measure other apps.</string>
+    <string name="access_no_permission">Shizuku is running. Allow PerfPilot to use it.</string>
+    <string name="access_not_running">Shizuku is installed but not running. Open it and tap Start (use Wireless debugging, no computer needed on Android 11+).</string>
+    <string name="access_not_installed">PerfPilot needs the free Shizuku app to measure other apps. Install it, start it, then come back.</string>
+    <string name="access_outdated">Your Shizuku version is too old. Update it from the Play Store.</string>
+    <string name="grant_access">Allow access</string>
+    <string name="open_shizuku">Open Shizuku</string>
+    <string name="get_shizuku">Get Shizuku</string>
+    <string name="permission_denied_before">Access was denied before. Allow PerfPilot in Shizuku → Authorized applications.</string>
+
+    <string name="choose_app">Choose an app</string>
+    <string name="tap_to_choose">Tap to choose an app</string>
+    <string name="loading_apps">Loading apps…</string>
+    <string name="search_apps">Search apps</string>
+    <string name="choose_app_first">Choose an app to test first</string>
+    <string name="need_access">Set up access in step 1 first</string>
+
+    <string name="runs">Measured runs</string>
+    <string name="journey">During each run</string>
+    <string name="mode_monkey">Tap through the app automatically</string>
+    <string name="mode_manual">I\'ll use the app myself</string>
+    <string name="events">Taps and swipes per run</string>
+    <string name="seconds">Seconds per run</string>
+    <string name="settings_hint">The app is closed and reopened before every run to measure a cold start. Don\'t touch the phone during automatic runs.</string>
+    <string name="manual_hint">After each launch, use the app the same way every run until the countdown ends.</string>
+
+    <string name="start">Start test</string>
+    <string name="stop">Stop</string>
+    <string name="no_reports">No reports yet. Your finished tests appear here.</string>
+    <string name="delete_report">Delete this report for %1$s?</string>
+    <string name="delete">Delete</string>
+
+    <string name="notif_starting">Starting the test…</string>
+    <string name="notif_done">%1$s test finished. Tap to view the report.</string>
+    <string name="notif_failed">Test failed: %1$s</string>
+
+    <string name="back">Back</string>
+    <string name="save_pdf">Save PDF</string>
+    <string name="report_missing">This report could not be found.</string>
+</resources>
