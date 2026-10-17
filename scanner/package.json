@@ -1,0 +1,14 @@
+{
+  "name": "confixhub-passivevuln",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ConfixHub PassiveVuln Scanner — passive, same-origin web security checks. Authorized use only.",
+  "bin": { "confix-scan": "scan.js" },
+  "scripts": {
+    "scan": "node scan.js",
+    "test": "node test/smoke.js",
+    "test:browser": "node test/browser.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
