@@ -127,6 +127,12 @@ class TestRunner(
             Regex("""userId=(\d+)""").find(dump)?.groupValues?.get(1)?.toIntOrNull() ?: -1
         }
         NetProbe.grantUsageAccess(context)
+        progress("Running the security checkup…")
+        val security = try {
+            SecurityCheck.inspect(context, pkg, component)
+        } catch (e: Exception) {
+            JSONObject().put("error", e.message ?: e.toString()).put("findings", JSONArray())
+        }
 
         for (w in 1..cfg.warmup) {
             checkCancelled()
@@ -168,6 +174,8 @@ class TestRunner(
             })
             put("iterations", iterations)
             put("network", networkSummary())
+            SecurityCheck.addObservedCleartext(security, servers.keys)
+            put("security", security)
         }
     }
 

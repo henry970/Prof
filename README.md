@@ -64,6 +64,7 @@ Past reports are listed on the main screen. Tap one to open it, or long-press it
 | Servers contacted | the app's open connections in `/proc/net/tcp`, sampled every 2 s, plus a connect-time check from the phone |
 | Crashes and freezes (ANR) | `am_crash` / `am_anr` events in the system log |
 | API response times | lines the app logs under the `PerfPilotApi` tag (see below) |
+| Security checkup | read-only: manifest flags (debuggable, backup, plain HTTP, target API), components open to other apps, sensitive permissions granted, and port-80 connections seen during the test. It never probes the app or its servers. |
 
 Scoring targets: cold start ≤ 1000 ms, janky frames ≤ 5%, CPU ≤ 25%, memory ≤ 200 MB. The score and report code is the same as the desktop CLI's: `app/src/main/assets/perf.js` is generated from it by `perfpilot-mobile/tools/build-android-assets.js`.
 

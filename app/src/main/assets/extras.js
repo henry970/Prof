@@ -1,4 +1,4 @@
-/* Android-only report sections: network, API timings, crashes. perf.js is generated from the
+/* Android-only report sections: network, API timings, crashes, security checkup. perf.js is generated from the
    desktop CLI, so these are added here, after it renders. */
 (function () {
   'use strict';
@@ -141,13 +141,89 @@
     }).join('');
   }
 
+  var SEV = {
+    high: { label: 'High', color: C.poor, order: 0 },
+    medium: { label: 'Medium', color: C.warn, order: 1 },
+    low: { label: 'Low', color: '#2563eb', order: 2 },
+    info: { label: 'Info', color: C.muted, order: 3 }
+  };
+
+  function securityPage(r) {
+    var sec = r.security;
+    if (!sec) return '';
+    var findings = (sec.findings || []).slice().sort(function (a, b) {
+      return (SEV[a.severity] || SEV.info).order - (SEV[b.severity] || SEV.info).order;
+    });
+    var counts = { high: 0, medium: 0, low: 0, info: 0 };
+    findings.forEach(function (f) { counts[f.severity] = (counts[f.severity] || 0) + 1; });
+
+    var tiles = ['high', 'medium', 'low', 'info'].map(function (k) {
+      return '<div class="card"><div class="card-label">' + SEV[k].label + '</div>' +
+        '<div class="card-val" style="color:' + (counts[k] ? SEV[k].color : C.muted) + '">' + counts[k] + '</div></div>';
+    }).join('');
+
+    var list = findings.length
+      ? findings.map(function (f) {
+          var s = SEV[f.severity] || SEV.info;
+          return '<div class="finding" style="border-left-color:' + s.color + '"><div class="f-title">' +
+            '<span style="color:' + s.color + '">' + s.label + '</span> · ' + esc(f.title) + '</div>' +
+            '<div class="f-detail">' + esc(f.detail) + '</div></div>';
+        }).join('')
+      : '<p class="cap" style="color:' + C.good + ';font-weight:700">No configuration issues found.</p>';
+
+    var perms = sec.permissions || [];
+    var permHtml = perms.length
+      ? '<table class="tbl"><thead><tr><th>Permission granted</th><th>System name</th></tr></thead><tbody>' +
+        perms.map(function (p) {
+          return '<tr><td' + (p.sensitive ? ' style="color:' + C.warn + ';font-weight:700"' : '') + '>' + esc(p.label) + '</td>' +
+            '<td class="cap">' + esc(p.name.replace('android.permission.', '')) + '</td></tr>';
+        }).join('') + '</tbody></table>'
+      : '<p class="cap">No sensitive permissions are granted.</p>';
+
+    var ex = sec.exported || {};
+    function n(a) { return a ? a.length : 0; }
+    var yes = function (v) { return v ? '<span class="err">Yes</span>' : 'No'; };
+
+    return '<section class="page">' +
+      '<div class="phead"><span>PerfPilot <b>Mobile</b></span><span>Security checkup · ' + esc(r.app.package) + '</span></div>' +
+      (sec.error ? '<p class="cap err">' + esc(sec.error) + '</p>' : '') +
+      '<p class="cap">A read-only look at how the app is configured on this phone, plus the connections seen during the test. ' +
+      'It doesn’t attack or probe the app or its servers, so it can’t find bugs in the app’s code. Use it as a checklist, not a verdict.</p>' +
+      '<div class="cards" style="grid-template-columns:repeat(4,1fr)">' + tiles + '</div>' +
+      '<h2>Findings</h2>' + list +
+      '<h2>Configuration</h2><table class="tbl kv"><tbody>' +
+      '<tr><td>Debuggable</td><td>' + yes(sec.debuggable) + '</td></tr>' +
+      '<tr><td>Plain HTTP allowed</td><td>' + yes(sec.cleartextAllowed) + '</td></tr>' +
+      '<tr><td>HTTP seen in test</td><td>' + ((sec.cleartextServers || []).length ? '<span class="err">' + esc(sec.cleartextServers.join(', ')) + '</span>' : 'None') + '</td></tr>' +
+      '<tr><td>Backup allowed</td><td>' + (sec.allowBackup ? 'Yes' : 'No') + '</td></tr>' +
+      '<tr><td>Target / min API</td><td>' + esc(sec.targetSdk) + ' / ' + esc(sec.minSdk) + '</td></tr>' +
+      '<tr><td>Open to other apps</td><td>' + n(ex.activities) + ' screens · ' + n(ex.services) + ' services · ' + n(ex.receivers) + ' receivers · ' + n(ex.providers) + ' providers</td></tr>' +
+      '</tbody></table>' +
+      '<h2>Sensitive permissions granted</h2>' + permHtml +
+      '<div class="pfoot"></div></section>';
+  }
+
   var render = window.PerfReport.render;
   window.PerfReport.render = function (raw) {
     var r = render(raw);
     try {
       document.body.insertAdjacentHTML('beforeend', networkPage(r));
+      document.body.insertAdjacentHTML('beforeend', securityPage(r));
       // Put crashes at the top of the findings too: they matter more than any speed number.
       var crashes = allCrashes((r.iterations || []).filter(function (it) { return !it.error; }));
+      var high = ((r.security && r.security.findings) || []).filter(function (f) { return f.severity === 'high'; });
+      if (high.length) {
+        var hs = document.querySelectorAll('h2');
+        for (var j = 0; j < hs.length; j++) {
+          if (hs[j].textContent === 'Findings') {
+            hs[j].insertAdjacentHTML('afterend',
+              '<div class="finding" style="border-left-color:' + C.poor + '"><div class="f-title">' + high.length +
+              ' high-severity security issue' + (high.length === 1 ? '' : 's') + '</div><div class="f-detail">' +
+              esc(high.map(function (f) { return f.title; }).join(' · ')) + '. See the Security checkup page.</div></div>');
+            break;
+          }
+        }
+      }
       if (crashes.length) {
         var heads = document.querySelectorAll('h2');
         for (var i = 0; i < heads.length; i++) {
@@ -161,7 +237,7 @@
         }
       }
     } catch (e) {
-      document.body.insertAdjacentHTML('beforeend', '<p class="cap">Network section failed: ' + esc(e.message) + '</p>');
+      document.body.insertAdjacentHTML('beforeend', '<p class="cap">Extra report sections failed: ' + esc(e.message) + '</p>');
     }
     return r;
   };
