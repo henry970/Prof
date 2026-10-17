@@ -68,6 +68,10 @@ class TestRunner(
     /** Linux uid of the app under test, used to find its network traffic. */
     private var uid = -1
 
+    /** Security observations across runs: screenshot protection and sensitive values in the app's logs. */
+    private var secureSeen: Boolean? = null
+    private val leaks = LinkedHashMap<String, Array<Any>>()
+
     /** Servers the app connected to, with the runs they were seen in. */
     private val servers = LinkedHashMap<NetProbe.Server, MutableSet<Int>>()
 
@@ -129,7 +133,7 @@ class TestRunner(
         NetProbe.grantUsageAccess(context)
         progress("Running the security checkup…")
         val security = try {
-            SecurityCheck.inspect(context, pkg, component)
+            SecurityCheck.inspect(context, pkg, component, dump)
         } catch (e: Exception) {
             JSONObject().put("error", e.message ?: e.toString()).put("findings", JSONArray())
         }
@@ -175,6 +179,7 @@ class TestRunner(
             put("iterations", iterations)
             put("network", networkSummary())
             SecurityCheck.addObservedCleartext(security, servers.keys)
+            SecurityCheck.addRuntime(security, secureSeen, leaks)
             put("security", security)
         }
     }
@@ -200,6 +205,20 @@ class TestRunner(
             .put("servers", list)
             .put("serversTotal", servers.size)
             .put("apiTag", NetProbe.API_TAG)
+    }
+
+    /** Checks the app's windows and its own log lines while it is still on screen. */
+    private fun securityProbe(pkg: String, sinceMs: Long) {
+        try {
+            SecurityCheck.windowSecure(Shell.tryExec("dumpsys window windows | grep -E 'Window #|fl='", 15_000), pkg)
+                ?.let { secureSeen = secureSeen == true || it }
+            val pid = Shell.tryExec("pidof $pkg", 5_000).trim().split(Regex("""\s+""")).firstOrNull()
+            if (!pid.isNullOrEmpty() && pid.all { it.isDigit() }) {
+                val lines = Shell.tryExec("logcat -d -T ${NetProbe.logTime(sinceMs)} --pid=$pid | ${SecurityCheck.LOG_GREP}", 20_000)
+                SecurityCheck.scanLogs(lines, leaks)
+            }
+        } catch (_: Exception) {
+        }
     }
 
     /** Toast + vibration so manual runs are easy to follow from inside the tested app. */
@@ -278,6 +297,7 @@ class TestRunner(
             result.put("api", NetProbe.apiCalls(started))
             val crashes = NetProbe.crashes(pkg, started)
             result.put("crashes", crashes)
+            securityProbe(pkg, started)
             if (crashes.length() > 0) progress("Run $index: the app crashed or froze (${crashes.length()} event${if (crashes.length() == 1) "" else "s"})")
         } catch (e: CancelledException) {
             throw e

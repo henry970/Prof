@@ -148,6 +148,15 @@
     info: { label: 'Info', color: C.muted, order: 3 }
   };
 
+  function leakHtml(leaks) {
+    if (!leaks.length) return '<p class="cap" style="color:' + C.good + ';font-weight:700">Nothing sensitive-looking was found in the app’s log lines during the test.</p>';
+    return '<table class="tbl"><thead><tr><th>What</th><th>Log lines</th><th>Example (masked)</th></tr></thead><tbody>' +
+      leaks.map(function (l) {
+        return '<tr><td' + (l.severity === 'high' ? ' class="err"' : '') + '>' + esc(l.type) + '</td><td>' + esc(l.count) + '</td><td>' + esc(l.sample) + '</td></tr>';
+      }).join('') +
+      '</tbody></table><p class="cap">Pattern matches can include false positives; check the app’s code before treating one as a leak.</p>';
+  }
+
   function securityPage(r) {
     var sec = r.security;
     if (!sec) return '';
@@ -198,7 +207,14 @@
       '<tr><td>Backup allowed</td><td>' + (sec.allowBackup ? 'Yes' : 'No') + '</td></tr>' +
       '<tr><td>Target / min API</td><td>' + esc(sec.targetSdk) + ' / ' + esc(sec.minSdk) + '</td></tr>' +
       '<tr><td>Open to other apps</td><td>' + n(ex.activities) + ' screens · ' + n(ex.services) + ' services · ' + n(ex.receivers) + ' receivers · ' + n(ex.providers) + ' providers</td></tr>' +
+      '<tr><td>Screenshots blocked</td><td>' + (sec.screenshotsBlocked == null ? '–' : sec.screenshotsBlocked ? 'Yes' : 'No') + '</td></tr>' +
+      '<tr><td>Installed from</td><td>' + esc(sec.installer || 'unknown') + '</td></tr>' +
+      '<tr><td>Signed by</td><td>' + esc(sec.signer || '–') + (sec.signatureScheme ? ' · scheme v' + esc(sec.signatureScheme) : '') +
+        (sec.signerSha256 ? '<br><span class="cap" style="word-break:break-all">SHA-256 ' + esc(sec.signerSha256) + '</span>' : '') + '</td></tr>' +
+      '<tr><td>Powerful roles</td><td>' + ([sec.accessibilityService ? 'Accessibility service' : '', sec.deviceAdmin ? 'Device admin' : ''].filter(Boolean).join(', ') || 'None') + '</td></tr>' +
+      '<tr><td>Analytics / ads SDKs</td><td>' + esc((sec.sdks || []).join(', ') || 'None found') + '</td></tr>' +
       '</tbody></table>' +
+      '<h2>Sensitive data in the app’s logs</h2>' + leakHtml(sec.logLeaks || []) +
       '<h2>Sensitive permissions granted</h2>' + permHtml +
       '<div class="pfoot"></div></section>';
   }
